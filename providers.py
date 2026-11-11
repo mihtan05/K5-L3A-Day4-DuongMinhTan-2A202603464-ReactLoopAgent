@@ -31,10 +31,13 @@ def post_json(url, headers, payload, max_retries=8):
                     try:
                         body = exc.read().decode('utf-8', errors='ignore')
                         m = re.search(r'"retryDelay"\s*:\s*"(\d+)s"', body)
+                        m2 = re.search(r'"Retry-After"\s*:\s*"(\d+)"', body)
                         if m:
                             wait_sec = max(int(m.group(1)) + 3, 5)
+                        elif m2:
+                            wait_sec = max(int(m2.group(1)) + 2, 10)
                         elif 'in_flight_budget' in body:
-                            wait_sec = 15 * (attempt + 1)
+                            wait_sec = 20 * (attempt + 1)
                     except Exception:
                         pass
                 time.sleep(wait_sec)
