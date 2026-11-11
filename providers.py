@@ -22,15 +22,21 @@ def post_json(url, headers, payload, max_retries=8):
             with urllib.request.urlopen(req, timeout=60) as response:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
-            if exc.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
-                wait_sec = 18 * (attempt + 1)
-                try:
-                    body = exc.read().decode('utf-8', errors='ignore')
-                    m = re.search(r'"retryDelay"\s*:\s*"(\d+)s"', body)
-                    if m:
-                        wait_sec = max(int(m.group(1)) + 3, 5)
-                except Exception:
-                    pass
+            if exc.code in (402, 429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                wait_sec = 10 * (attempt + 1)
+                retry_header = exc.headers.get('Retry-After')
+                if retry_header and retry_header.isdigit():
+                    wait_sec = max(int(retry_header) + 2, 5)
+                else:
+                    try:
+                        body = exc.read().decode('utf-8', errors='ignore')
+                        m = re.search(r'"retryDelay"\s*:\s*"(\d+)s"', body)
+                        if m:
+                            wait_sec = max(int(m.group(1)) + 3, 5)
+                        elif 'in_flight_budget' in body:
+                            wait_sec = 15 * (attempt + 1)
+                    except Exception:
+                        pass
                 time.sleep(wait_sec)
                 continue
             # Do not print response bodies: they may contain account or request data.
@@ -75,7 +81,7 @@ class Provider:
     def complete(self, messages, schemas):
         if self.name == 'anthropic':
             return self._anthropic(messages, schemas)
-        payload = {'model': self.model, 'messages': messages, 'max_tokens': 4096}
+        payload = {'model': self.model, 'messages': messages, 'max_tokens': 2048}
         if schemas:
             payload['tools'] = schemas
         data = post_json(self.url, {'Authorization': f'Bearer {self.key}'}, payload)
